@@ -1,0 +1,9 @@
+name = Address Book
+type = module
+description = Adds a streamlined address book experience for user profiles, featuring a summary list view, focused add/edit forms, and Addressfield-powered rendering.
+backdrop = 1.x
+package = Fields
+maintainers[alan_mels] = Alan Mels
+maintainers_wanted = TRUE
+dependencies[] = addressfield
+stylesheets[all][] = css/addressbook.css

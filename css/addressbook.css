@@ -1,0 +1,25 @@
+.addressbook-item.form-wrapper {
+    background: #f9f9f9;
+    display: inline-block;
+    margin-right: 20px;
+    min-height: 250px;
+    vertical-align: top;
+    border: 1px solid #ddd;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.addressbook-item-links {
+    display: block;
+    margin-top: 10px;
+    font-size: 0.95em;
+}
+
+.addressbook-item-links .is-current {
+    font-weight: bold;
+}
+
+
+fieldset.addressbook-single-fieldset {
+    padding: 20px;
+}

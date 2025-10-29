@@ -1,0 +1,788 @@
+<?php
+
+/**
+ * @file
+ * Provides helper functions for the Addressbook module.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function addressbook_menu() {
+  $items = [];
+
+  $items['user/%user/addressbook'] = [
+    'title' => 'Address Book',
+    'page callback' => 'addressbook_user_address_page',
+    'page arguments' => [1],
+    'access callback' => 'addressbook_user_address_access',
+    'access arguments' => [1],
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 5,
+  ];
+
+  $items['user/%user/addressbook/%/edit'] = [
+    'title' => 'Edit address',
+    'page callback' => 'addressbook_edit_address_page',
+    'page arguments' => [1, 3],
+    'access callback' => 'addressbook_user_address_access',
+    'access arguments' => [1],
+    'type' => MENU_CALLBACK,
+  ];
+
+  $items['user/%user/addressbook/%/remove'] = [
+    'title' => 'Remove address',
+    'page callback' => 'addressbook_remove_address_page',
+    'page arguments' => [1, 3],
+    'access callback' => 'addressbook_user_address_access',
+    'access arguments' => [1],
+    'type' => MENU_CALLBACK,
+  ];
+
+  $items['user/%user/addressbook/%/default'] = [
+    'title' => 'Set default address',
+    'page callback' => 'addressbook_set_default_address_page',
+    'page arguments' => [1, 3],
+    'access callback' => 'addressbook_user_address_access',
+    'access arguments' => [1],
+    'type' => MENU_CALLBACK,
+  ];
+
+  $items['user/%user/addressbook/add'] = [
+    'title' => 'Add address',
+    'page callback' => 'addressbook_add_address_page',
+    'page arguments' => [1],
+    'access callback' => 'addressbook_user_address_access',
+    'access arguments' => [1],
+    'type' => MENU_CALLBACK,
+  ];
+
+  return $items;
+}
+
+/**
+ * Page callback wrapper for editing a single address.
+ */
+function addressbook_edit_address_page($account, $delta) {
+  if (!is_numeric($delta)) {
+    backdrop_not_found();
+    return NULL;
+  }
+
+  $delta = (int) $delta;
+
+  backdrop_set_title(t('Edit saved address'));
+  menu_set_active_item('user/' . $account->uid . '/addressbook');
+
+  return backdrop_get_form('addressbook_user_address_form', $account, $delta);
+}
+
+/**
+ * Menu callback wrapper for adding a new address entry.
+ */
+function addressbook_add_address_page($account) {
+  backdrop_set_title(t('Add address'));
+  menu_set_active_item('user/' . $account->uid . '/addressbook');
+
+  return backdrop_get_form('addressbook_user_address_form', $account, 'add');
+}
+
+/**
+ * Implements hook_user_view().
+ */
+function addressbook_user_view($account, $view_mode, $langcode) {
+  if (isset($account->content['field_addressbook'])) {
+    unset($account->content['field_addressbook']);
+  }
+}
+
+/**
+ * Page callback for listing saved addresses.
+ */
+function addressbook_user_address_page($account) {
+  if (!$account || empty($account->uid)) {
+    backdrop_not_found();
+    return [];
+  }
+
+  $account = user_load($account->uid, TRUE);
+  if (!$account) {
+    backdrop_not_found();
+    return [];
+  }
+
+  $field_name = 'field_addressbook';
+  $existing_items = [];
+  if (!empty($account->{$field_name}) && is_array($account->{$field_name})) {
+    foreach ($account->{$field_name} as $langcode => $items) {
+      if (is_array($items) && !empty($items)) {
+        $existing_items[$langcode] = $items;
+      }
+    }
+  }
+
+  $build = [];
+
+  $build['address_list'] = [
+    '#type' => 'container',
+    '#attributes' => ['class' => ['addressbook-address-list', 'clearfix']],
+  ];
+
+  if (!empty($existing_items)) {
+    $build['address_list']['items'] = [
+      '#type' => 'container',
+      '#attributes' => ['class' => ['addressbook-items']],
+    ];
+
+    $field_info = field_info_field($field_name);
+    $instance_info = field_info_instance('user', $field_name, 'user');
+    $handlers = [];
+    if (!empty($instance_info['widget']['settings']['format_handlers'])) {
+      $handlers = $instance_info['widget']['settings']['format_handlers'];
+    }
+
+    foreach ($existing_items as $langcode => $items) {
+      foreach ($items as $delta => $address) {
+        $context = [
+          'mode' => 'render',
+          'field' => $field_info,
+          'instance' => $instance_info,
+          'langcode' => $langcode,
+          'delta' => $delta,
+        ];
+        $summary_render = addressfield_generate($address, $handlers, $context);
+        $summary_markup = backdrop_render($summary_render);
+
+        $weight = isset($address['_weight']) ? (int) $address['_weight'] : (int) $delta;
+        $wrapper_id = backdrop_html_id('edit-address-list-' . $langcode . '-' . $delta);
+        $key = $langcode . '_' . $delta;
+
+        $entry = [
+          '#type' => 'container',
+          '#attributes' => [
+            'class' => ['addressbook-item', 'form-wrapper'],
+            'id' => $wrapper_id,
+          ],
+          '#weight' => $weight,
+        ];
+        $entry['summary'] = [
+          '#type' => 'container',
+          '#attributes' => [
+            'class' => ['addressbook-item-summary'],
+            'id' => $wrapper_id . '-view',
+          ],
+        ];
+        $entry['summary']['content'] = [
+          '#markup' => $summary_markup,
+        ];
+
+        $entry['actions'] = [
+          '#type' => 'container',
+          '#attributes' => ['class' => ['addressbook-item-actions']],
+        ];
+
+        $destination = backdrop_get_destination();
+        $destination['address_langcode'] = $langcode;
+
+        $links = [];
+        $links[] = l(t('Edit'), 'user/' . $account->uid . '/addressbook/' . $delta . '/edit', [
+          'attributes' => ['class' => ['addressbook-edit-link']],
+          'query' => $destination,
+        ]);
+        $links[] = l(t('Remove'), 'user/' . $account->uid . '/addressbook/' . $delta . '/remove', [
+          'attributes' => ['class' => ['addressbook-remove-link']],
+          'query' => $destination,
+        ]);
+        if ($delta !== 0) {
+          $links[] = l(t('Set as Default'), 'user/' . $account->uid . '/addressbook/' . $delta . '/default', [
+            'attributes' => ['class' => ['addressbook-default-link']],
+            'query' => $destination,
+          ]);
+        }
+        else {
+          $links[] = '<span class="addressbook-default-link is-current">' . t('Default') . '</span>';
+        }
+
+        $entry['actions']['links'] = [
+          '#markup' => '<span class="addressbook-item-links">' . implode(' | ', $links) . '</span>',
+        ];
+
+        $build['address_list']['items'][$key] = $entry;
+      }
+    }
+  }
+  else {
+    $build['address_list']['empty'] = [
+      '#markup' => '<p>' . t('No saved addresses are available yet.') . '</p>',
+    ];
+  }
+
+  $build['actions'] = [
+    '#type' => 'container',
+    '#attributes' => ['class' => ['addressbook-list-actions']],
+  ];
+  $build['actions']['add'] = [
+    '#type' => 'link',
+    '#title' => t('Add address'),
+    '#href' => 'user/' . $account->uid . '/addressbook/add',
+    '#attributes' => ['class' => ['button', 'button-primary']],
+  ];
+  $build['actions']['profile'] = [
+    '#type' => 'link',
+    '#title' => t('Back to profile'),
+    '#href' => 'user/' . $account->uid,
+    '#attributes' => ['class' => ['button', 'button-secondary']],
+  ];
+
+  return $build;
+}
+
+/**
+ * Menu callback wrapper for removing an address entry.
+ */
+function addressbook_remove_address_page($account, $delta) {
+  if (!is_numeric($delta)) {
+    backdrop_not_found();
+    return NULL;
+  }
+
+  $delta = (int) $delta;
+
+  $account = user_load($account->uid, TRUE);
+  if (!$account) {
+    backdrop_not_found();
+    return NULL;
+  }
+
+  $langcode = $_GET['address_langcode'] ?? NULL;
+
+  $item = addressbook_get_address_item($account, $delta, $langcode);
+  if (!$item) {
+    backdrop_not_found();
+    return NULL;
+  }
+
+  backdrop_set_title(t('Remove address'));
+  menu_set_active_item('user/' . $account->uid . '/addressbook');
+
+  return backdrop_get_form('addressbook_remove_address_confirm', $account, $item['langcode'], $delta);
+}
+
+/**
+ * Menu callback wrapper for setting the default address.
+ */
+function addressbook_set_default_address_page($account, $delta) {
+  if (!is_numeric($delta)) {
+    backdrop_not_found();
+    return;
+  }
+
+  $delta = (int) $delta;
+
+  $account = user_load($account->uid, TRUE);
+  if (!$account) {
+    backdrop_not_found();
+    return;
+  }
+
+  $langcode = $_GET['address_langcode'] ?? NULL;
+
+  $item = addressbook_get_address_item($account, $delta, $langcode);
+  if (!$item) {
+    backdrop_not_found();
+    return;
+  }
+
+  menu_set_active_item('user/' . $account->uid . '/addressbook');
+
+  if ($delta === 0) {
+    backdrop_set_message(t('This address is already the default.'));
+    backdrop_goto('user/' . $account->uid . '/addressbook');
+    return;
+  }
+
+  $field_name = 'field_addressbook';
+  $langcode = $item['langcode'];
+  $address = $item['address'];
+
+  if (!isset($account->{$field_name}[$langcode][$delta])) {
+    backdrop_set_message(t('The selected address could not be found.'), 'warning');
+    backdrop_goto('user/' . $account->uid . '/addressbook');
+    return;
+  }
+
+  unset($account->{$field_name}[$langcode][$delta]);
+  $account->{$field_name}[$langcode] = array_values($account->{$field_name}[$langcode]);
+  array_unshift($account->{$field_name}[$langcode], $address);
+
+  foreach ($account->{$field_name}[$langcode] as $index => &$entry) {
+    if (is_array($entry)) {
+      $entry['_weight'] = $index;
+    }
+  }
+  unset($entry);
+
+  user_save($account);
+
+  backdrop_set_message(t('The default address has been updated.'));
+
+  backdrop_goto('user/' . $account->uid . '/addressbook');
+}
+
+/**
+ * Implements hook_theme().
+ */
+function addressbook_theme() {
+  return [];
+}
+
+/**
+ * Access callback for address book pages.
+ */
+function addressbook_user_address_access($account) {
+  if (!$account || empty($account->uid)) {
+    return FALSE;
+  }
+
+  if (user_access('administer users')) {
+    return TRUE;
+  }
+
+  return user_edit_access($account);
+}
+
+/**
+ * Locate an address entry by delta.
+ */
+function addressbook_get_address_item($account, $delta, $langcode = NULL) {
+  $field_name = 'field_addressbook';
+
+  if (empty($account->{$field_name}) || !is_array($account->{$field_name})) {
+    return NULL;
+  }
+
+  foreach ($account->{$field_name} as $item_langcode => $items) {
+    if ($langcode !== NULL && $item_langcode !== $langcode) {
+      continue;
+    }
+
+    if (isset($items[$delta])) {
+      return [
+        'langcode' => $item_langcode,
+        'address' => $items[$delta],
+      ];
+    }
+  }
+
+  return NULL;
+}
+
+/**
+ * Builds rendered summary markup for an address entry.
+ */
+function addressbook_address_summary_markup($address, $langcode, $delta) {
+  static $info;
+
+  if (!isset($info)) {
+    $field_name = 'field_addressbook';
+    $info = [
+      'field' => field_info_field($field_name),
+      'instance' => field_info_instance('user', $field_name, 'user'),
+      'handlers' => [],
+    ];
+
+    if (!empty($info['instance']['widget']['settings']['format_handlers'])) {
+      $info['handlers'] = $info['instance']['widget']['settings']['format_handlers'];
+    }
+  }
+
+  if (empty($info['field']) || empty($info['instance'])) {
+    return '';
+  }
+
+  $context = [
+    'mode' => 'render',
+    'field' => $info['field'],
+    'instance' => $info['instance'],
+    'langcode' => $langcode,
+    'delta' => $delta,
+  ];
+
+  $render_array = addressfield_generate($address, $info['handlers'], $context);
+
+  return backdrop_render($render_array);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function addressbook_form_user_profile_form_alter(&$form, &$form_state) {
+  $field_name = 'field_addressbook';
+  if (isset($form[$field_name])) {
+    unset($form[$field_name]);
+  }
+}
+
+/**
+ * Builds the user address book management form.
+ */
+function addressbook_user_address_form($form, &$form_state, $account, $edit_delta = NULL) {
+  if (!$account || empty($account->uid)) {
+    backdrop_not_found();
+    return $form;
+  }
+
+  $account = user_load($account->uid, TRUE);
+  if (!$account) {
+    backdrop_not_found();
+    return $form;
+  }
+
+  $field_name = 'field_addressbook';
+  $mode = 'edit';
+
+  if ($edit_delta === 'add') {
+    $mode = 'add';
+  }
+  elseif ($edit_delta !== NULL) {
+    if (!is_numeric($edit_delta)) {
+      backdrop_not_found();
+      return $form;
+    }
+    $edit_delta = (int) $edit_delta;
+  }
+
+  $default_langcode = field_language('user', $account, $field_name);
+  if (!$default_langcode) {
+    $default_langcode = LANGUAGE_NONE;
+  }
+
+  if ($mode === 'add') {
+    if (!isset($account->{$field_name}[$default_langcode])) {
+      $account->{$field_name}[$default_langcode] = [];
+    }
+    $account->{$field_name}[$default_langcode][] = [];
+    $edit_delta = count($account->{$field_name}[$default_langcode]) - 1;
+  }
+
+  $existing_items = [];
+  if (!empty($account->{$field_name}) && is_array($account->{$field_name})) {
+    foreach ($account->{$field_name} as $langcode => $items) {
+      if (is_array($items)) {
+        $existing_items[$langcode] = $items;
+      }
+    }
+  }
+
+  $target_langcode = $default_langcode;
+  if ($mode === 'edit') {
+    $found = FALSE;
+    foreach ($existing_items as $langcode => $items) {
+      if (isset($items[$edit_delta])) {
+        $target_langcode = $langcode;
+        $found = TRUE;
+        break;
+      }
+    }
+    if (!$found) {
+      backdrop_not_found();
+      return $form;
+    }
+  }
+
+  $form['#tree'] = TRUE;
+  $form['#account'] = $account;
+  $form['#addressbook_mode'] = $mode;
+  $form['#addressbook_edit_delta'] = $edit_delta;
+  $form['#addressbook_target_langcode'] = $target_langcode;
+  $form_state['addressbook_account'] = $account;
+
+  $fields = [$field_name];
+  field_attach_form('user', $account, $form, $form_state, NULL, $fields);
+
+  if (isset($form['redirect'])) {
+    unset($form['redirect']);
+  }
+
+  $active_element = NULL;
+
+  if (isset($form[$field_name]) && is_array($form[$field_name])) {
+    foreach (element_children($form[$field_name]) as $langcode) {
+      if (empty($form[$field_name][$langcode]) || !is_array($form[$field_name][$langcode])) {
+        continue;
+      }
+
+      $container = &$form[$field_name][$langcode];
+
+      foreach (element_children($container) as $delta) {
+        if ($delta === 'add_more') {
+          unset($container[$delta]);
+          continue;
+        }
+
+        if ($langcode !== $target_langcode || (int) $delta !== (int) $edit_delta) {
+          unset($container[$delta]);
+          continue;
+        }
+
+        $element = &$container[$delta];
+
+        if (!isset($element['#attributes'])) {
+          $element['#attributes'] = [];
+        }
+        if (!isset($element['#attributes']['class'])) {
+          $element['#attributes']['class'] = [];
+        }
+        $element['#attributes']['class'][] = 'addressbook-single-fieldset';
+
+        if (!empty($element['country']) && empty($element['country']['#default_value'])) {
+          $element['country']['#default_value'] = 'US';
+        }
+
+        if (isset($element['_weight'])) {
+          $element['_weight']['#access'] = FALSE;
+        }
+
+        $active_element = $element;
+
+        unset($element);
+      }
+
+      if (empty(element_children($container))) {
+        unset($form[$field_name][$langcode]);
+      }
+
+      unset($container);
+    }
+  }
+  else {
+    $form[$field_name] = [
+      '#type' => 'item',
+      '#markup' => t('No address field is available for this account.'),
+    ];
+  }
+
+  if ($active_element !== NULL && is_array($active_element)) {
+    unset($active_element['#title']);
+    $active_element['#parents'] = [$field_name, $target_langcode, $edit_delta];
+    $active_element['#array_parents'] = [$field_name, $target_langcode, $edit_delta];
+
+    $wrapper_attached = $form[$field_name]['#attached'] ?? [];
+    if (!empty($wrapper_attached['library'])) {
+      $filtered_libraries = [];
+      foreach ($wrapper_attached['library'] as $library) {
+        if ($library === ['system', 'tabledrag']) {
+          continue;
+        }
+        $filtered_libraries[] = $library;
+      }
+      $wrapper_attached['library'] = $filtered_libraries;
+      if (empty($wrapper_attached['library'])) {
+        unset($wrapper_attached['library']);
+      }
+    }
+
+    $wrapper_attributes = $form[$field_name]['#attributes'] ?? [];
+    if (!isset($wrapper_attributes['class'])) {
+      $wrapper_attributes['class'] = [];
+    }
+    $wrapper_attributes['class'][] = 'addressbook-single-wrapper';
+
+    $form[$field_name] = [
+      '#type' => 'container',
+      '#tree' => TRUE,
+      '#attributes' => $wrapper_attributes,
+      '#attached' => $wrapper_attached,
+      '#addressbook_target_langcode' => $target_langcode,
+      '#addressbook_edit_delta' => $edit_delta,
+      'address' => $active_element,
+    ];
+  }
+
+  $form['actions'] = ['#type' => 'actions'];
+  $form['actions']['submit'] = [
+    '#type' => 'submit',
+    '#value' => t('Save address'),
+  ];
+  $form['actions']['cancel'] = [
+    '#type' => 'link',
+    '#title' => t('Cancel'),
+    '#href' => 'user/' . $account->uid . '/addressbook',
+    '#attributes' => ['class' => ['button', 'button-secondary']],
+  ];
+
+  $form['#validate'][] = 'addressbook_user_address_form_validate';
+  $form['#submit'][] = 'addressbook_user_address_form_submit';
+
+  return $form;
+}
+
+/**
+ * Confirmation form for removing an address entry.
+ */
+function addressbook_remove_address_confirm($form, &$form_state, $account, $langcode, $delta) {
+  $item = addressbook_get_address_item($account, $delta, $langcode);
+  if (!$item) {
+    backdrop_not_found();
+    return $form;
+  }
+
+  $summary = addressbook_address_summary_markup($item['address'], $langcode, $delta);
+  $description = $summary ? '<div class="addressbook-item-summary-preview">' . $summary . '</div>' : '';
+
+  $form = confirm_form(
+    $form,
+    t('Remove this address?'),
+    'user/' . $account->uid . '/addressbook',
+    $description,
+    t('Remove'),
+    t('Cancel')
+  );
+
+  $form['uid'] = ['#type' => 'value', '#value' => $account->uid];
+  $form['langcode'] = ['#type' => 'value', '#value' => $langcode];
+  $form['delta'] = ['#type' => 'value', '#value' => $delta];
+
+  $form['#submit'][] = 'addressbook_remove_address_confirm_submit';
+
+  return $form;
+}
+
+/**
+ * Submit handler for removing an address entry.
+ */
+function addressbook_remove_address_confirm_submit($form, &$form_state) {
+  if (empty($form_state['values']['confirm'])) {
+    return;
+  }
+
+  $uid = (int) $form_state['values']['uid'];
+  $langcode = $form_state['values']['langcode'];
+  $delta = (int) $form_state['values']['delta'];
+
+  $account = user_load($uid, TRUE);
+  if (!$account) {
+    backdrop_set_message(t('Unable to remove the address because the account could not be loaded.'), 'error');
+    return;
+  }
+
+  $field_name = 'field_addressbook';
+
+  if (!isset($account->{$field_name}[$langcode][$delta])) {
+    backdrop_set_message(t('The selected address could not be found.'), 'warning');
+    return;
+  }
+
+  unset($account->{$field_name}[$langcode][$delta]);
+  $account->{$field_name}[$langcode] = array_values($account->{$field_name}[$langcode]);
+
+  foreach ($account->{$field_name}[$langcode] as $index => &$entry) {
+    if (is_array($entry)) {
+      $entry['_weight'] = $index;
+    }
+  }
+  unset($entry);
+
+  user_save($account);
+
+  backdrop_set_message(t('The address has been removed.'));
+}
+
+/**
+ * Validation handler for the address book form.
+ */
+function addressbook_user_address_form_validate($form, &$form_state) {
+  if (empty($form_state['addressbook_account'])) {
+    return;
+  }
+
+  $fields = ['field_addressbook'];
+  field_attach_form_validate('user', $form_state['addressbook_account'], $form, $form_state, NULL, $fields);
+}
+
+/**
+ * Submit handler for the address book form.
+ */
+function addressbook_user_address_form_submit($form, &$form_state) {
+  $account = $form_state['addressbook_account'];
+  if (!$account) {
+    backdrop_set_message(t('Unable to save addresses for this account.'), 'error');
+    return;
+  }
+
+  $field_name = 'field_addressbook';
+  $fields = ['field_addressbook'];
+  $mode = $form['#addressbook_mode'] ?? 'edit';
+
+  $stored_account = user_load($account->uid, TRUE);
+  if (!$stored_account) {
+    backdrop_set_message(t('Unable to load the account for saving.'), 'error');
+    return;
+  }
+
+  $target_langcode = $form['#addressbook_target_langcode'] ?? LANGUAGE_NONE;
+  $edit_delta = $form['#addressbook_edit_delta'] ?? NULL;
+
+  $submitted_account = clone $account;
+  field_attach_submit('user', $submitted_account, $form, $form_state, NULL, $fields);
+
+  $existing_values = [];
+  if (!empty($stored_account->{$field_name}) && is_array($stored_account->{$field_name})) {
+    $existing_values = $stored_account->{$field_name};
+  }
+
+  $submitted_values = [];
+  if ($target_langcode !== NULL && isset($submitted_account->{$field_name}[$target_langcode])) {
+    $submitted_values = $submitted_account->{$field_name}[$target_langcode];
+  }
+  elseif (!empty($submitted_account->{$field_name})) {
+    $first_langcode = key($submitted_account->{$field_name});
+    $submitted_values = $submitted_account->{$field_name}[$first_langcode];
+    if ($target_langcode === NULL) {
+      $target_langcode = $first_langcode;
+    }
+  }
+
+  if (!isset($existing_values[$target_langcode]) || !is_array($existing_values[$target_langcode])) {
+    $existing_values[$target_langcode] = [];
+  }
+
+  $submitted_item = NULL;
+  if ($edit_delta !== NULL && isset($submitted_values[$edit_delta])) {
+    $submitted_item = $submitted_values[$edit_delta];
+  }
+  elseif (!empty($submitted_values)) {
+    $submitted_item = reset($submitted_values);
+  }
+
+  if ($submitted_item !== NULL) {
+    if ($mode === 'add') {
+      $existing_values[$target_langcode][] = $submitted_item;
+      $edit_delta = count($existing_values[$target_langcode]) - 1;
+    }
+    else {
+      $existing_values[$target_langcode][$edit_delta] = $submitted_item;
+    }
+  }
+
+  foreach ($existing_values as &$items) {
+    if (is_array($items)) {
+      ksort($items);
+      $items = array_values($items);
+    }
+  }
+  unset($items);
+
+  $account = $stored_account;
+  $account->{$field_name} = $existing_values;
+
+  user_save($account);
+
+  $messages = [
+    'add' => t('The new address has been saved.'),
+    'edit' => t('The address has been saved.'),
+  ];
+  backdrop_set_message($messages[$mode] ?? $messages['edit']);
+
+  $form_state['redirect'] = 'user/' . $account->uid . '/addressbook';
+}

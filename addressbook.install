@@ -1,0 +1,167 @@
+<?php
+
+/**
+ * @file
+ * Install, update, and uninstall functions for the Addressbook module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function addressbook_install() {
+  addressbook_provision_user_field();
+}
+
+/**
+ * Implements hook_enable().
+ */
+function addressbook_enable() {
+  addressbook_provision_user_field();
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function addressbook_uninstall() {
+  if (!function_exists('field_read_field')) {
+    return;
+  }
+
+  $field_name = 'field_addressbook';
+
+  $field = field_read_field($field_name, ['include_deleted' => TRUE, 'include_inactive' => TRUE]);
+  if (!$field) {
+    return;
+  }
+
+  if (empty($field['deleted'])) {
+    if (!function_exists('field_delete_field')) {
+      return;
+    }
+    field_delete_field($field_name);
+    $field = field_read_field($field_name, ['include_deleted' => TRUE, 'include_inactive' => TRUE]);
+  }
+
+  $instances = field_read_instances(
+    ['field_name' => $field_name],
+    ['include_deleted' => TRUE, 'include_inactive' => TRUE]
+  );
+  foreach ($instances as $instance) {
+    if (!empty($instance['deleted']) && function_exists('field_purge_instance')) {
+      field_purge_instance($instance);
+    }
+  }
+
+  if (!empty($field['deleted']) && function_exists('field_purge_field')) {
+    field_purge_field($field);
+  }
+
+  if (function_exists('field_cache_clear')) {
+    field_cache_clear();
+  }
+
+  // Explicitly remove config files in case they still exist on disk.
+  config('field.field.' . $field_name)->delete();
+  config('field.instance.user.user.' . $field_name)->delete();
+}
+
+/**
+ * Ensures the user address book field exists.
+ */
+function addressbook_provision_user_field() {
+  if (!module_exists('addressfield')) {
+    backdrop_set_message(t('The Addressfield module must be enabled to provision the user address book field.'), 'error');
+    return;
+  }
+
+  if (!function_exists('field_create_field')) {
+    return;
+  }
+
+  $field_name = 'field_addressbook';
+
+  // Clean up any lingering deleted configuration for this field name.
+  $deleted_field = field_read_field($field_name, ['include_deleted' => TRUE, 'include_inactive' => TRUE]);
+  if (!empty($deleted_field) && !empty($deleted_field['deleted'])) {
+    if (function_exists('field_purge_field')) {
+      field_purge_field($deleted_field);
+    }
+    if (function_exists('field_cache_clear')) {
+      field_cache_clear();
+    }
+  }
+
+  if (!field_info_field($field_name)) {
+    $field = [
+      'field_name' => $field_name,
+      'type' => 'addressfield',
+      'cardinality' => FIELD_CARDINALITY_UNLIMITED,
+      'translatable' => FALSE,
+      'settings' => [],
+    ];
+
+    try {
+      field_create_field($field);
+      if (function_exists('field_info_cache_clear')) {
+        field_info_cache_clear();
+      }
+    }
+    catch (FieldException $exception) {
+      watchdog_exception('addressbook', $exception);
+      return;
+    }
+  }
+
+  $field_definition = field_read_field($field_name);
+  if (empty($field_definition)) {
+    watchdog('addressbook', 'Unable to provision the %name field.', ['%name' => $field_name], WATCHDOG_ERROR);
+    return;
+  }
+
+  if (!field_info_instance('user', $field_name, 'user')) {
+    $instance = [
+      'field_name' => $field_name,
+      'entity_type' => 'user',
+      'bundle' => 'user',
+      'label' => t('Address Book'),
+      'required' => FALSE,
+      'settings' => [],
+      'widget' => [
+        'type' => 'addressfield_standard',
+        'settings' => [
+          'available_countries' => [],
+          'default_country' => 'US',
+          'format_handlers' => ['address', 'name_oneline'],
+        ],
+        'weight' => 0,
+      ],
+      'display' => [
+        'default' => [
+          'label' => 'hidden',
+          'type' => 'addressfield_default',
+          'settings' => [],
+          'weight' => 0,
+        ],
+      ],
+    ];
+    field_create_instance($instance);
+  }
+  else {
+    $instance = field_info_instance('user', $field_name, 'user');
+    if (empty($instance['widget']['settings']['default_country']) && function_exists('field_update_instance')) {
+      $instance['widget']['settings']['default_country'] = 'US';
+      field_update_instance($instance);
+    }
+
+    if (!empty($instance['widget']['settings']) && is_array($instance['widget']['settings'])) {
+      $handlers = $instance['widget']['settings']['format_handlers'] ?? [];
+      if (!in_array('name_oneline', $handlers, TRUE)) {
+        $handlers[] = 'name_oneline';
+        $instance['widget']['settings']['format_handlers'] = $handlers;
+        if (function_exists('field_update_instance')) {
+          field_update_instance($instance);
+        }
+      }
+    }
+  }
+}
