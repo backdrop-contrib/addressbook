@@ -6,7 +6,7 @@ focused add/edit forms, and Addressfield-powered rendering.
 
 Requirements
 ------------
-- Addressfield module
+- [Addressfield](https://github.com/backdrop-contrib/addressfield) module
 
 Installation
 ------------
@@ -17,6 +17,8 @@ Installation
 
 Configuration
 -------------
+- Administrators can configure field settings at
+  `admin/config/people/manage/fields/field_addressbook`.
 - Visit a user profile and open the **Address Book** tab to manage entries.
 - Use the list page action links to add, edit, remove, or set defaults.
 
@@ -27,14 +29,13 @@ https://github.com/backdrop-contrib/addressbook/issues
 
 Current Maintainers
 -------------------
-- Alan Mels
 - [Alan Mels](https://github.com/alanmels/)
 
 
 Credits
 -------
-- Built by the [AltaGrade Team](https://www.altagrade.com) team, leveraging the Addressfield module.
+- Built by the [AltaGrade Team](https://www.altagrade.com) team.
 
 License
 -------
-This project is GPL v2 software. See the included LICENSE.txt for details.
+This project is GPL v2 software. See the included [LICENSE.txt](https://raw.githubusercontent.com/backdrop-contrib/addressbook/refs/heads/1.x-1.x/LICENSE.txt) for details.
