@@ -36,6 +36,12 @@ Credits
 -------
 - Built by the [AltaGrade Team](https://www.altagrade.com) team.
 
+Releases
+--------
+- 1.x-1.0: Initial release with summary list view, standalone add/edit
+  workflows, removal confirmations, default address selection, and
+  Addressfield integration.
+
 License
 -------
 This project is GPL v2 software. See the included [LICENSE.txt](https://raw.githubusercontent.com/backdrop-contrib/addressbook/refs/heads/1.x-1.x/LICENSE.txt) for details.
