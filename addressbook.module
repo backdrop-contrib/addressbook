@@ -301,32 +301,9 @@ function addressbook_set_default_address_page($account, $delta) {
     return;
   }
 
-  $field_name = 'field_addressbook';
-  $langcode = $item['langcode'];
-  $address = $item['address'];
+  backdrop_set_title(t('Set as default address'));
 
-  if (!isset($account->{$field_name}[$langcode][$delta])) {
-    backdrop_set_message(t('The selected address could not be found.'), 'warning');
-    backdrop_goto('user/' . $account->uid . '/addressbook');
-    return;
-  }
-
-  unset($account->{$field_name}[$langcode][$delta]);
-  $account->{$field_name}[$langcode] = array_values($account->{$field_name}[$langcode]);
-  array_unshift($account->{$field_name}[$langcode], $address);
-
-  foreach ($account->{$field_name}[$langcode] as $index => &$entry) {
-    if (is_array($entry)) {
-      $entry['_weight'] = $index;
-    }
-  }
-  unset($entry);
-
-  user_save($account);
-
-  backdrop_set_message(t('The default address has been updated.'));
-
-  backdrop_goto('user/' . $account->uid . '/addressbook');
+  return backdrop_get_form('addressbook_set_default_address_confirm', $account, $item['langcode'], $delta);
 }
 
 /**
@@ -628,7 +605,7 @@ function addressbook_remove_address_confirm($form, &$form_state, $account, $lang
   }
 
   $summary = addressbook_address_summary_markup($item['address'], $langcode, $delta);
-  $description = $summary ? '<div class="addressbook-item-summary-preview">' . $summary . '</div>' : '';
+  $description = $summary ? t('Selected address: !address', ['!address' => $summary]) : '';
 
   $form = confirm_form(
     $form,
@@ -646,6 +623,89 @@ function addressbook_remove_address_confirm($form, &$form_state, $account, $lang
   $form['#submit'][] = 'addressbook_remove_address_confirm_submit';
 
   return $form;
+}
+
+/**
+ * Confirmation form for setting the default address.
+ */
+function addressbook_set_default_address_confirm($form, &$form_state, $account, $langcode, $delta) {
+  $item = addressbook_get_address_item($account, $delta, $langcode);
+  if (!$item) {
+    backdrop_not_found();
+    return $form;
+  }
+
+  $summary = addressbook_address_summary_markup($item['address'], $langcode, $delta);
+  $description = $summary ? '<div class="addressbook-item-summary-preview">' . $summary . '</div>' : '';
+
+  $form = confirm_form(
+    $form,
+    t('Set this address as the default?'),
+    'user/' . $account->uid . '/addressbook',
+    $description,
+    t('Set as default'),
+    t('Cancel')
+  );
+
+  $form['uid'] = ['#type' => 'value', '#value' => $account->uid];
+  $form['langcode'] = ['#type' => 'value', '#value' => $langcode];
+  $form['delta'] = ['#type' => 'value', '#value' => $delta];
+
+  $form['#submit'][] = 'addressbook_set_default_address_confirm_submit';
+
+  return $form;
+}
+
+/**
+ * Submit handler for setting the default address.
+ */
+function addressbook_set_default_address_confirm_submit($form, &$form_state) {
+  if (empty($form_state['values']['confirm'])) {
+    return;
+  }
+
+  $uid = (int) $form_state['values']['uid'];
+  $langcode = $form_state['values']['langcode'];
+  $delta = (int) $form_state['values']['delta'];
+
+  $account = user_load($uid, TRUE);
+  if (!$account) {
+    backdrop_set_message(t('Unable to update the default address because the account could not be loaded.'), 'error');
+    return;
+  }
+
+  $field_name = 'field_addressbook';
+
+  if ($delta === 0) {
+    backdrop_set_message(t('This address is already the default.'));
+    $form_state['redirect'] = 'user/' . $account->uid . '/addressbook';
+    return;
+  }
+
+  if (!isset($account->{$field_name}[$langcode][$delta])) {
+    backdrop_set_message(t('The selected address could not be found.'), 'warning');
+    $form_state['redirect'] = 'user/' . $account->uid . '/addressbook';
+    return;
+  }
+
+  $address = $account->{$field_name}[$langcode][$delta];
+
+  unset($account->{$field_name}[$langcode][$delta]);
+  $account->{$field_name}[$langcode] = array_values($account->{$field_name}[$langcode]);
+  array_unshift($account->{$field_name}[$langcode], $address);
+
+  foreach ($account->{$field_name}[$langcode] as $index => &$entry) {
+    if (is_array($entry)) {
+      $entry['_weight'] = $index;
+    }
+  }
+  unset($entry);
+
+  user_save($account);
+
+  backdrop_set_message(t('The default address has been updated.'));
+
+  $form_state['redirect'] = 'user/' . $account->uid . '/addressbook';
 }
 
 /**
