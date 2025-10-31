@@ -576,6 +576,18 @@ function addressbook_user_address_form($form, &$form_state, $account, $edit_delt
     ];
   }
 
+  // Ensure the standalone form only exposes the address fieldset and actions.
+  $allowed_root_elements = [$field_name, 'actions', 'form_build_id', 'form_token', 'form_id'];
+  foreach (array_keys($form) as $key) {
+    if (is_string($key) && strlen($key) > 0 && $key[0] === '#') {
+      continue;
+    }
+    if (in_array($key, $allowed_root_elements, TRUE)) {
+      continue;
+    }
+    unset($form[$key]);
+  }
+
   $form['actions'] = ['#type' => 'actions'];
   $form['actions']['submit'] = [
     '#type' => 'submit',

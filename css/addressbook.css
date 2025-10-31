@@ -1,8 +1,8 @@
-.addressbook-item.form-wrapper {
+.addressbook-item.form-wrapper,
+.addressbook-item-summary-preview {
     background: #f9f9f9;
     display: inline-block;
     margin-right: 20px;
-    min-height: 250px;
     vertical-align: top;
     border: 1px solid #ddd;
     padding: 20px;

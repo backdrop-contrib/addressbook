@@ -131,7 +131,7 @@ function addressbook_provision_user_field() {
         'settings' => [
           'available_countries' => [],
           'default_country' => 'US',
-          'format_handlers' => ['address', 'name_oneline'],
+          'format_handlers' => ['address', 'name_full'],
         ],
         'weight' => 0,
       ],
@@ -155,8 +155,8 @@ function addressbook_provision_user_field() {
 
     if (!empty($instance['widget']['settings']) && is_array($instance['widget']['settings'])) {
       $handlers = $instance['widget']['settings']['format_handlers'] ?? [];
-      if (!in_array('name_oneline', $handlers, TRUE)) {
-        $handlers[] = 'name_oneline';
+      if (!in_array('name_full', $handlers, TRUE)) {
+        $handlers[] = 'name_full';
         $instance['widget']['settings']['format_handlers'] = $handlers;
         if (function_exists('field_update_instance')) {
           field_update_instance($instance);
