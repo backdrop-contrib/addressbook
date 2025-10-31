@@ -7,3 +7,4 @@ maintainers[alan_mels] = Alan Mels
 maintainers_wanted = TRUE
 dependencies[] = addressfield
 stylesheets[all][] = css/addressbook.css
+configure = admin/config/people/manage/fields/field_addressbook
