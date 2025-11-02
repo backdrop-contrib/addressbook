@@ -80,6 +80,11 @@ function addressbook_provision_user_field() {
 
   $field_name = 'field_addressbook';
 
+  // Ensure field type definitions are refreshed before provisioning the field.
+  if (function_exists('field_info_cache_clear')) {
+    field_info_cache_clear();
+  }
+
   // Clean up any lingering deleted configuration for this field name.
   $deleted_field = field_read_field($field_name, ['include_deleted' => TRUE, 'include_inactive' => TRUE]);
   if (!empty($deleted_field) && !empty($deleted_field['deleted'])) {
